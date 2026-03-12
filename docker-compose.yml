@@ -1,0 +1,14 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+
+    environment:
+      POSTGRES_DB: agentwork
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ansh
+    ports:
+      - "5433:5432"
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
