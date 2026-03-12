@@ -2,8 +2,12 @@ from fastapi import FastAPI
 
 from api.db.database import engine
 from api.db.models import Base
+from api.routes import projects
 
 app = FastAPI(title="Dispatch API")
+
+
+app.include_router(projects.router)
 
 
 @app.on_event("startup")

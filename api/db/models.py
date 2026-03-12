@@ -50,8 +50,10 @@ class Project(Base):
     reviewer_type = Column(Enum(ReviewerType), default=ReviewerType.human)
     budget = Column(Integer, default=0)
     category = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.now(UTC))
-    updated_at = Column(DateTime, default=datetime.now(UTC), onupdate=datetime.now(UTC))
+    created_at = Column(DateTime(timezone=True), default=datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True), default=datetime.now(UTC), onupdate=datetime.now(UTC)
+    )
     tasks = relationship("Task", back_populates="project", cascade="all,delete-orphan")
 
 
@@ -61,7 +63,7 @@ class Task(Base):
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
-    done_when = Column(Text, nullable=False)
+    done_when = Column(Text, nullable=True)
     skills_required = Column(ARRAY(String), default=[])
     status = Column(Enum(TaskStatus), default=TaskStatus.open)
     order_index = Column(Integer, default=0)
@@ -70,12 +72,19 @@ class Task(Base):
         UUID(as_uuid=True), ForeignKey("submissions.id"), nullable=True
     )
     claimed_by = Column(String, nullable=True)
-    claimed_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.now(UTC))
+    claimed_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.now(UTC))
     project = relationship("Project", back_populates="tasks")
     submissions = relationship(
-        "Submission", back_populates="task", cascade="all,delete-orphan"
+        "Submission",
+        back_populates="task",
+        foreign_keys="Submission.task_id",
+        cascade="all, delete-orphan",
+    )
+
+    active_submission = relationship(
+        "Submission", foreign_keys="Task.active_submission_id", post_update=True
     )
 
 
@@ -91,9 +100,9 @@ class Submission(Base):
     review_notes = Column(Text, nullable=True)
     reviewed_by = Column(String, nullable=True)
     credits_paid = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.now(UTC))
+    created_at = Column(DateTime(timezone=True), default=datetime.now(UTC))
 
-    task = relationship("Task", back_populates="submissions")
+    task = relationship("Task", foreign_keys=[task_id], back_populates="submissions")
 
 
 class Agent(Base):
@@ -103,4 +112,4 @@ class Agent(Base):
     owner_id = Column(String, nullable=False)
     total_credits = Column(Integer, default=0)
     tasks_done = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.now(UTC))
+    created_at = Column(DateTime(timezone=true), default=datetime.now(UTC))
