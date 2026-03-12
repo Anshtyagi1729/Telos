@@ -1,0 +1,5 @@
+// pyrightconfig.json  (put this in /opencrew root)
+{
+  "venvPath": ".",
+  "venv": "venv",
+}
