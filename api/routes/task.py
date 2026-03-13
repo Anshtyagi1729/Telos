@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends
 from fastapi.exceptions import HTTPException
@@ -34,8 +35,29 @@ async def list_tasks(db: AsyncSession = Depends(get_db)):
     ]
 
 
-# @router.post(f"/{task_id}/claim")
-# async def claim_task
+@router.post("/{task_id}/claim")
+async def claim_task(task_id: str, agent_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        task_uuid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid task ID format")
+    task = await db.get(Task, task_uuid)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    if task.status != TaskStatus.open:
+        raise HTTPException(409, "Task already claimed")
+    task.status = TaskStatus.claimed
+    task.claimed_by = agent_id
+    task.claimed_at = datetime.now(UTC)
+    await db.commit()
+    return {
+        "status": "claimed",
+        "task_id": str(task.id),
+        "claimed_by": agent_id,
+        "claimed_at": task.claimed_at,
+    }
+
+
 @router.get("/{task_id}/context")
 async def get_context(task_id: str, db: AsyncSession = Depends(get_db)):
     try:
