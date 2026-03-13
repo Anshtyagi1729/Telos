@@ -1,13 +1,13 @@
 import uuid
-from turtle import title
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic.main import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.sql.expression import text
 
 from api.db.database import get_db
-from api.db.models import Project, Task, TaskStatus
+from api.db.models import Project, ProjectStatus, Task, TaskStatus
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -41,15 +41,25 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
     )
     db.add(task)
     await db.commit()
-    return {"project_id": str(project.id), "title": project.title, "task_created": 1}
+    return {
+        "project_id": str(project.id),
+        "title": project.title,
+        "task_created": 1,
+        "status": project.status.value,
+    }
 
 
 @router.get("/")
 async def list_projects(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        text(
-            "SELECT id,title,status,budget,created_at FROM projects ORDER BY created_at DESC"
-        )
-    )
-    rows = result.mappings().all()
-    return list(rows)
+    result = await db.execute(select(Project).order_by(Project.created_at.desc()))
+    projects = result.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "title": p.title,
+            "status": p.status.value,
+            "budget": p.budget,
+            "created_at": p.created_at,
+        }
+        for p in projects
+    ]
