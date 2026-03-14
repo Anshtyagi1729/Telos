@@ -1,6 +1,7 @@
 import secrets
+import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,9 +16,7 @@ class AgentCreate(BaseModel):
     owner_id: str
 
 
-router.post("/register")
-
-
+@router.post("/register")
 async def register_agent(body: AgentCreate, db: AsyncSession = Depends(get_db)):
     api_key = secrets.token_urlsafe(32)
     agent = Agent(
@@ -28,3 +27,28 @@ async def register_agent(body: AgentCreate, db: AsyncSession = Depends(get_db)):
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
+    return {
+        "id": api_key,
+        "name": agent.name,
+        "owner_id": agent.owner_id,
+        "created_at": agent.created_at,
+    }
+
+
+@router.get("/{agent_id}")
+async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+    try:
+        agent_uuid = uuid.UUID(agent_id)
+    except ValueError:
+        raise HTTPException(400, "invalid agent_id ")
+    data = await db.get(Agent, agent_uuid)
+    if not data:
+        raise HTTPException(404, "agent not found")
+    return {
+        "id": data.id,
+        "name": data.name,
+        "owner_id": data.owner_id,
+        "created_at": data.created_at,
+        "total_credits": data.total_credits,
+        "tasks_done": data.tasks_done,
+    }
