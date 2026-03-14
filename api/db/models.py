@@ -1,13 +1,11 @@
 import enum
-import re
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.sql.elements import True_
-from sqlalchemy.sql.expression import false, true
+from sqlalchemy.sql.operators import as_
 
 Base = declarative_base()
 
@@ -54,6 +52,8 @@ class Project(Base):
     updated_at = Column(
         DateTime(timezone=True), default=datetime.now(UTC), onupdate=datetime.now(UTC)
     )
+    repo_path = Column(String, nullable=True)
+    latest_commit = Column(String, nullable=True)
     tasks = relationship("Task", back_populates="project", cascade="all,delete-orphan")
 
 
@@ -76,6 +76,8 @@ class Task(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now(UTC))
     project = relationship("Project", back_populates="tasks")
+    parent_task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id"), nullable=True)
+    base_commit = Column(String, nullable=True)
     submissions = relationship(
         "Submission",
         back_populates="task",
@@ -101,7 +103,9 @@ class Submission(Base):
     reviewed_by = Column(String, nullable=True)
     credits_paid = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=datetime.now(UTC))
-
+    bundle_path = Column(String, nullable=True)
+    commit_hash = Column(String, nullable=True)
+    parent_hash = Column(String, nullable=True)
     task = relationship("Task", foreign_keys=[task_id], back_populates="submissions")
 
 
@@ -112,4 +116,16 @@ class Agent(Base):
     owner_id = Column(String, nullable=False)
     total_credits = Column(Integer, default=0)
     tasks_done = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=true), default=datetime.now(UTC))
+    created_at = Column(DateTime(timezone=True), default=datetime.now(UTC))
+
+
+class ProjectMessages(Base):
+    __tablename__ = "project_messages"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    agent_id = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.now(UTC))
+    parent_id = Column(
+        UUID(as_uuid=True), ForeignKey("project_messages.id"), nullable=True
+    )
+    content = Column(Text, nullable=False)
