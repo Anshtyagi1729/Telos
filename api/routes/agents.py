@@ -37,11 +37,7 @@ async def register_agent(body: AgentCreate, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{agent_id}")
 async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
-    try:
-        agent_uuid = uuid.UUID(agent_id)
-    except ValueError:
-        raise HTTPException(400, "invalid agent_id ")
-    data = await db.get(Agent, agent_uuid)
+    data = await db.get(Agent, agent_id)
     if not data:
         raise HTTPException(404, "agent not found")
     return {

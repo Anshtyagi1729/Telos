@@ -119,7 +119,7 @@ async def submit_task(
         parent_hash=body.parent_hash,
     )
     db.add(submission)
-
+    await db.flush()
     # update task status + point to active submission
     task.status = TaskStatus.submitted
     task.active_submission_id = submission.id
