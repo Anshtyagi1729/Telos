@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-psycopg2-binary
-bcrypt
-pyjwt
-python-multipart
-pydantic
