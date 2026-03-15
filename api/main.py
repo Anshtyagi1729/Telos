@@ -5,8 +5,6 @@ from api.db.models import Base
 from api.routes import projects, task
 
 app = FastAPI(title="Dispatch API")
-
-
 app.include_router(projects.router)
 app.include_router(task.router)
 
