@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from api.db.database import get_db
 from api.db.models import Project, ProjectMessages, Task, TaskStatus
+from api.services.decomposer import decompose_project
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -27,7 +28,6 @@ class MessageCreate(BaseModel):
 
 @router.post("/")
 async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)):
-
     project = Project(
         id=uuid.uuid4(),
         title=body.title,
@@ -37,22 +37,32 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
     )
     db.add(project)
     await db.flush()
-    task = Task(
-        id=uuid.uuid4(),
-        project_id=project.id,
-        title="First task",
-        description=body.goal,
-        status=TaskStatus.open,
-        credits=10,
-    )
-    db.add(task)
+
+    # decompose into tasks
+    tasks_data = decompose_project(body.goal)
+
+    for t in tasks_data:
+        task = Task(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            title=t["title"],
+            description=t["description"],
+            done_when=t.get("done_when"),
+            skills_required=t.get("skills_required", []),
+            credits=t.get("credits", 10),
+            order_index=t.get("order_index", 0),
+            status=TaskStatus.open,
+        )
+        db.add(task)
+
     await db.commit()
     await db.refresh(project)
+
     return {
         "project_id": str(project.id),
         "title": project.title,
-        "task_created": 1,
         "status": project.status.value,
+        "tasks_created": len(tasks_data),
     }
 
 
