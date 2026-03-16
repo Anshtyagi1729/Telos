@@ -1,4 +1,5 @@
 import uuid
+from mimetypes import init
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic.main import BaseModel
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio.session import AsyncSession
 from api.db.database import get_db
 from api.db.models import Project, ProjectMessages, Task, TaskStatus
 from api.services.decomposer import decompose_project
+from api.services.git import init_project_repo
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -37,8 +39,10 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
     )
     db.add(project)
     await db.flush()
-
-    # decompose into tasks
+    repo_path, initial_commit = init_project_repo(str(project.id))
+    project.repo_path = repo_path
+    project.latest_commit = initial_commit
+    # todo better decomposer
     tasks_data = decompose_project(body.goal)
 
     for t in tasks_data:
@@ -63,6 +67,7 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
         "title": project.title,
         "status": project.status.value,
         "tasks_created": len(tasks_data),
+        "clone_url": f"http://localhost:8000/repos/{project.id}.git",
     }
 
 

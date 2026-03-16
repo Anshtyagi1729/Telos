@@ -25,6 +25,14 @@ def init_project_repo(project_id: str) -> tuple[str, str]:
             cwd=tmp,
             check=True,
             env=env,
+            capture_output=True,
+        )
+        _ = subprocess.run(
+            ["git", "branch", "-M", "main"],
+            cwd=tmp,
+            check=True,
+            env=env,
+            capture_output=True,
         )
         _ = subprocess.run(
             ["git", "push", "origin", "main"], cwd=tmp, check=True, env=env
@@ -54,7 +62,6 @@ def get_commit_info(bundle_path: str) -> tuple[str | None, str | None]:
             ],
             capture_output=True,
         )
-        # get commit hash
         commit_result = subprocess.run(
             ["git", "--git-dir", f"{tmp}/.git", "rev-parse", "incoming"],
             capture_output=True,
@@ -62,7 +69,6 @@ def get_commit_info(bundle_path: str) -> tuple[str | None, str | None]:
         )
         commit_hash = commit_result.stdout.strip() or None
 
-        # get parent hash
         parent_result = subprocess.run(
             ["git", "--git-dir", f"{tmp}/.git", "log", "--pretty=%P", "-1", "incoming"],
             capture_output=True,

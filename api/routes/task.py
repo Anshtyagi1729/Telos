@@ -87,11 +87,13 @@ async def claim_task(task_id: str, agent_id: str, db: AsyncSession = Depends(get
 @router.post("/{task_id}/submit")
 async def submit_task(
     task_id: str,
-    body: TaskSubmit,
-    db: AsyncSession = Depends(get_db),
+    agent_id: str = Form(...),
+    output: str = Form(...),
+    commit_hash: str | None = Form(None),
+    parent_hash: str | None = Form(None),
     bundle: UploadFile = File(None),
+    db: AsyncSession = Depends(get_db),
 ):
-
     try:
         task_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -100,17 +102,19 @@ async def submit_task(
     task = await db.get(Task, task_uuid)
     if not task:
         raise HTTPException(404, "Task not found")
-    if task.claimed_by != body.agent_id:
+    if task.claimed_by != agent_id:
         raise HTTPException(403, "This task is not claimed by you")
     if task.status != TaskStatus.claimed:
         raise HTTPException(409, "Task is not in claimed status")
+
     bundle_path = None
-    if bundle:
+    if bundle and bundle.filename:
         os.makedirs("/data/bundles", exist_ok=True)
-        bundle_path = f"data/bundles/{task_id}.bundle"
+        bundle_path = f"/data/bundles/{task_id}.bundle"  # ← fixed leading slash
         with open(bundle_path, "wb") as f:
             _ = f.write(await bundle.read())
-        body.commit_hash, body.parent_hash = get_commit_info(bundle_path)
+        commit_hash, parent_hash = get_commit_info(bundle_path)
+
     result = await db.execute(
         select(Submission)
         .where(Submission.task_id == task_uuid)
@@ -123,25 +127,25 @@ async def submit_task(
     submission = Submission(
         id=uuid.uuid4(),
         task_id=task_uuid,
-        agent_id=body.agent_id,
-        output=body.output,
+        agent_id=agent_id,
+        output=output,
         version=next_version,
-        commit_hash=body.commit_hash,
-        parent_hash=body.parent_hash,
+        bundle_path=bundle_path,
+        commit_hash=commit_hash,
+        parent_hash=parent_hash,
     )
     db.add(submission)
     await db.flush()
-    # update task status + point to active submission
+
     task.status = TaskStatus.submitted
     task.active_submission_id = submission.id
-
     await db.commit()
 
     return {
         "status": "submitted",
         "submission_id": str(submission.id),
         "version": next_version,
-        "commit_hash": submission.commit_hash,
+        "commit_hash": commit_hash,
     }
 
 
@@ -281,4 +285,48 @@ async def get_context(
             {"agent_id": m.agent_id, "content": m.content, "created_at": m.created_at}
             for m in reversed(messages)
         ],
+    }
+
+
+@router.post("/{task_id}/bundle")
+async def upload_bundle(
+    task_id: str,
+    agent_id: str = Form(...),
+    bundle: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        task_uuid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid task ID")
+
+    task = await db.get(Task, task_uuid)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    if task.claimed_by != agent_id:
+        raise HTTPException(403, "Not your task")
+    if not task.active_submission_id:
+        raise HTTPException(400, "Submit metadata first before uploading bundle")
+
+    # save bundle to disk
+    os.makedirs("/data/bundles", exist_ok=True)
+    bundle_path = f"/data/bundles/{task_id}.bundle"
+    with open(bundle_path, "wb") as f:
+        _ = f.write(await bundle.read())
+
+    # extract commit info
+    commit_hash, parent_hash = get_commit_info(bundle_path)
+
+    # update the submission
+    submission = await db.get(Submission, task.active_submission_id)
+    submission.bundle_path = bundle_path
+    submission.commit_hash = commit_hash
+    submission.parent_hash = parent_hash
+
+    await db.commit()
+
+    return {
+        "status": "bundle uploaded",
+        "commit_hash": commit_hash,
+        "parent_hash": parent_hash,
     }
