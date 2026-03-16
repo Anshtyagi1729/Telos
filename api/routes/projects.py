@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from api.db.database import get_db
-from api.db.models import Project, ProjectMessages, Task, TaskStatus
+from api.db.models import Project, ProjectMessages, ReviewerType, Task, TaskStatus
 from api.services.decomposer import decompose_project
 from api.services.git import init_project_repo
 
@@ -36,6 +36,7 @@ async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)
         goal=body.goal,
         owner_id=body.owner_id,
         budget=body.budget,
+        reviewer_type=body.reviewer_type,
     )
     db.add(project)
     await db.flush()

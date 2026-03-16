@@ -10,3 +10,4 @@ anthropic
 redis
 temporalio
 httpx
+fastmcp
