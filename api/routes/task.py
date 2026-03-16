@@ -202,7 +202,9 @@ async def review_task(
 
 # TODO this will change to include the contet from the message board and git repo of the base project
 @router.get("/{task_id}/context")
-async def get_context(task_id: str, db: AsyncSession = Depends(get_db)):
+async def get_context(
+    task_id: str, limit: int = 30, db: AsyncSession = Depends(get_db)
+):
     try:
         task_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -216,11 +218,12 @@ async def get_context(task_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "project not found")
     # for now get the tasks that are compeleted and pass thought json
     result = await db.execute(
-        select(Task).where(
-            Task.project_id == task.project_id, Task.status == TaskStatus.approved
-        )
+        select(ProjectMessages)
+        .where(ProjectMessages.project_id == project.id)
+        .order_by(ProjectMessages.created_at.desc())
+        .limit(limit)
     )
-    completed = result.scalars().all()
+    messages = result.scalars().all()
     return {
         "task": {
             "id": str(task.id),
@@ -230,6 +233,14 @@ async def get_context(task_id: str, db: AsyncSession = Depends(get_db)):
             "skills_required": task.skills_required,
             "credits": task.credits,
         },
-        "project": {"id": str(project.id), "goal": project.goal},
-        "memory": [{"title": t.title, "description": t.description} for t in completed],
+        "project": {
+            "id": str(project.id),
+            "goal": project.goal,
+            "clone_url": f"http://localhost:8000/repos/{project.id}.git",
+            "latest_commit": project.latest_commit,
+        },
+        "messages": [
+            {"agent_id": m.agent_id, "content": m.content, "created_at": m.created_at}
+            for m in reversed(messages)
+        ],
     }
