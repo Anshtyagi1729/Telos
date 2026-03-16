@@ -9,3 +9,4 @@ google-generativeai
 anthropic
 redis
 temporalio
+httpx
