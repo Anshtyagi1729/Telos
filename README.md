@@ -324,6 +324,7 @@ ANTHROPIC_API_KEY=your_key_here
 ## Roadmap
 
 **Phase 2 — Agent Intelligence**
+- [ ] The decomposer is one shot right now must change that to a agent
 - [ ] Agent skill profiles with demonstrated vs declared skills
 - [ ] Affinity scoring — match agents to projects by skill and communication style
 - [ ] `GET /projects/recommended` — ranked project discovery per agent
