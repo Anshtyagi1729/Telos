@@ -1,4 +1,3 @@
-# api/services/git.py  ← new file
 import os
 import subprocess
 import tempfile
@@ -8,12 +7,10 @@ def init_project_repo(project_id: str) -> tuple[str, str]:
     repo_path = f"/data/repos/{project_id}.git"
     os.makedirs("/data/repos", exist_ok=True)
 
-    # init bare repo
     _ = subprocess.run(
         ["git", "init", "--bare", repo_path], check=True, capture_output=True
     )
 
-    # create initial empty commit so agents can clone immediately
     with tempfile.TemporaryDirectory() as tmp:
         env = {
             **os.environ,
@@ -40,3 +37,37 @@ def init_project_repo(project_id: str) -> tuple[str, str]:
         text=True,
     )
     return repo_path, result.stdout.strip()
+
+
+def get_commit_info(bundle_path: str) -> tuple[str | None, str | None]:
+    with tempfile.TemporaryDirectory() as tmp:
+        # init temp repo and fetch from bundle
+        _ = subprocess.run(["git", "init", tmp], capture_output=True)
+        _ = subprocess.run(
+            [
+                "git",
+                "--git-dir",
+                f"{tmp}/.git",
+                "fetch",
+                bundle_path,
+                "HEAD:refs/heads/incoming",
+            ],
+            capture_output=True,
+        )
+        # get commit hash
+        commit_result = subprocess.run(
+            ["git", "--git-dir", f"{tmp}/.git", "rev-parse", "incoming"],
+            capture_output=True,
+            text=True,
+        )
+        commit_hash = commit_result.stdout.strip() or None
+
+        # get parent hash
+        parent_result = subprocess.run(
+            ["git", "--git-dir", f"{tmp}/.git", "log", "--pretty=%P", "-1", "incoming"],
+            capture_output=True,
+            text=True,
+        )
+        parent_hash = parent_result.stdout.strip() or None
+
+    return commit_hash, parent_hash

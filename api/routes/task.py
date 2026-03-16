@@ -1,7 +1,9 @@
+import os
+import subprocess
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.exceptions import HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -16,6 +18,7 @@ from api.db.models import (
     Task,
     TaskStatus,
 )
+from api.services.git import get_commit_info
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -23,14 +26,14 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 class TaskSubmit(BaseModel):
     agent_id: str
     output: str
-    commit_hash: str | None
-    parent_hash: str | None
+    commit_hash: str | None = None
+    parent_hash: str | None = None
 
 
 class TaskReview(BaseModel):
     approved: bool
     reviewer_id: str
-    review_notes: str | None
+    review_notes: str | None = None
 
 
 @router.get("/open")
@@ -83,7 +86,10 @@ async def claim_task(task_id: str, agent_id: str, db: AsyncSession = Depends(get
 
 @router.post("/{task_id}/submit")
 async def submit_task(
-    task_id: str, body: TaskSubmit, db: AsyncSession = Depends(get_db)
+    task_id: str,
+    body: TaskSubmit,
+    db: AsyncSession = Depends(get_db),
+    bundle: UploadFile = File(None),
 ):
 
     try:
@@ -98,8 +104,13 @@ async def submit_task(
         raise HTTPException(403, "This task is not claimed by you")
     if task.status != TaskStatus.claimed:
         raise HTTPException(409, "Task is not in claimed status")
-
-    # get current highest version for this task
+    bundle_path = None
+    if bundle:
+        os.makedirs("/data/bundles", exist_ok=True)
+        bundle_path = f"data/bundles/{task_id}.bundle"
+        with open(bundle_path, "wb") as f:
+            _ = f.write(await bundle.read())
+        body.commit_hash, body.parent_hash = get_commit_info(bundle_path)
     result = await db.execute(
         select(Submission)
         .where(Submission.task_id == task_uuid)
@@ -130,6 +141,7 @@ async def submit_task(
         "status": "submitted",
         "submission_id": str(submission.id),
         "version": next_version,
+        "commit_hash": submission.commit_hash,
     }
 
 
@@ -149,11 +161,39 @@ async def review_task(
         raise HTTPException(409, "Task is not submitted yet")
     if not task.active_submission_id:
         raise HTTPException(400, "No active submission found")
-
+    project = await db.get(Project, task.project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
     submission = await db.get(Submission, task.active_submission_id)
+    if not submission:
+        raise HTTPException(404, "submission not found")
 
+    bundle_path = submission.bundle_path if submission.bundle_path else None
+    repo_path = project.repo_path if project.repo_path else None
+    commit_hash = submission.commit_hash if submission.commit_hash else None
     if body.approved:
-        # approve submission
+        if (
+            str(bundle_path)
+            and str(repo_path)
+            and str(commit_hash)
+            and os.path.exists(str(bundle_path))
+        ):
+            try:
+                _ = subprocess.run(
+                    [
+                        "git",
+                        "--git-dir",
+                        str(repo_path),
+                        "fetch",
+                        str(bundle_path),
+                        f"{commit_hash}:main",
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                project.latest_commit = commit_hash
+            except subprocess.CalledProcessError:
+                raise HTTPException(500, "Failed to merge bundle")
         submission.status = SubmissionStatus.approved
         submission.reviewed_by = body.reviewer_id
         submission.review_notes = body.review_notes
@@ -212,11 +252,9 @@ async def get_context(
     task = await db.get(Task, task_uuid)
     if not task:
         raise HTTPException(404, "Task not found")
-    # for basic mem right now TODO :mke beterrrr
     project = await db.get(Project, task.project_id)
     if not project:
         raise HTTPException(404, "project not found")
-    # for now get the tasks that are compeleted and pass thought json
     result = await db.execute(
         select(ProjectMessages)
         .where(ProjectMessages.project_id == project.id)
